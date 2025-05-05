@@ -57,15 +57,25 @@ const (
 
 var defaultName string
 var noBrand bool
+var showVersion bool
 
 func main() {
 	configPath := flag.String("config", "", "Path to TOML config file (default: ./servers.toml)")
 	defaultNameFlag := flag.String("name", "FictusVNC", "Default server name")
 	noBrandFlag := flag.Bool("no-brand", false, "Disable 'FictusVNC - ' prefix in server name")
+	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
+	flag.BoolVar(&showVersion, "v", false, "Show version and exit (shorthand)")
 	flag.Parse()
 
 	defaultName = *defaultNameFlag
 	noBrand = *noBrandFlag
+
+	if showVersion {
+		fmt.Printf("FictusVNC %s\n", appVersion)
+		return
+	}
+
+	log.Printf("[INFO] FictusVNC %s starting…", appVersion)
 
 	if *configPath == "" {
 		exe, _ := os.Executable()
