@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -131,6 +132,8 @@ func runVNCServer(addr string, f *fb, serverName string) {
 	for {
 		c, err := ln.Accept()
 		if err != nil {
+			log.Printf("[%s] Accept error: %v", serverName, err)
+			time.Sleep(time.Second)
 			continue
 		}
 		go serve(c, f, serverName)
@@ -138,25 +141,98 @@ func runVNCServer(addr string, f *fb, serverName string) {
 }
 
 func serve(c net.Conn, f *fb, serverName string) {
-	defer c.Close()
-	write(c, []byte(rfbVersion))
-	readN(c, 12)
-	write(c, []byte{1, 1})
-	readN(c, 1)
-	write(c, make([]byte, 4))
-	readN(c, 1)
+	defer func() {
+		c.Close()
+		log.Printf("[%s] Client disconnected", serverName)
+	}()
+
+	log.Printf("[%s] Client connected from %s", serverName, c.RemoteAddr())
+
+	// Add read deadline to prevent goroutine leaks
+	c.SetReadDeadline(time.Now().Add(30 * time.Second))
+
+	// VNC handshake
+	_, err := c.Write([]byte(rfbVersion))
+	if err != nil {
+		log.Printf("[%s] Failed to send version: %v", serverName, err)
+		return
+	}
+
+	buf := make([]byte, 12)
+	_, err = io.ReadFull(c, buf)
+	if err != nil {
+		log.Printf("[%s] Failed to read client version: %v", serverName, err)
+		return
+	}
+
+	_, err = c.Write([]byte{1, 1})
+	if err != nil {
+		log.Printf("[%s] Failed to send auth: %v", serverName, err)
+		return
+	}
+
+	buf = make([]byte, 1)
+	_, err = io.ReadFull(c, buf)
+	if err != nil {
+		log.Printf("[%s] Failed to read auth selection: %v", serverName, err)
+		return
+	}
+
+	_, err = c.Write(make([]byte, 4))
+	if err != nil {
+		log.Printf("[%s] Failed to send auth result: %v", serverName, err)
+		return
+	}
+
+	buf = make([]byte, 1)
+	_, err = io.ReadFull(c, buf)
+	if err != nil {
+		log.Printf("[%s] Failed to read client init: %v", serverName, err)
+		return
+	}
 
 	pf := pixelFormat{32, 24, 0, 1, 255, 255, 255, 16, 8, 0, [3]byte{}}
-	sendServerInit(c, f.w, f.h, pf, serverName)
+	err = sendServerInit(c, f.w, f.h, pf, serverName)
+	if err != nil {
+		log.Printf("[%s] Failed to send server init: %v", serverName, err)
+		return
+	}
 
 	var lastRejectedFormat string
 
 	for {
-		switch read1(c) {
+		// Reset read deadline for each message
+		err := c.SetReadDeadline(time.Now().Add(30 * time.Second))
+		if err != nil {
+			log.Printf("[%s] Failed to set read deadline: %v", serverName, err)
+			return
+		}
+
+		msgType, err := read1(c)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				log.Printf("[%s] Read timeout, closing connection", serverName)
+			} else if err != io.EOF {
+				log.Printf("[%s] Read error: %v", serverName, err)
+			}
+			return
+		}
+
+		switch msgType {
 		case msgSetPixelFormat:
-			readN(c, 3)
+			_, err := readN(c, 3)
+			if err != nil {
+				log.Printf("[%s] Failed to read padding: %v", serverName, err)
+				return
+			}
+
 			var buf [16]byte
-			readFull(c, buf[:])
+			_, err = io.ReadFull(c, buf[:])
+			if err != nil {
+				log.Printf("[%s] Failed to read pixel format: %v", serverName, err)
+				return
+			}
+
 			var want pixelFormat
 			binary.Read(bytes.NewReader(buf[:]), binary.BigEndian, &want)
 			formatID := fmt.Sprintf("%dbpp trueColor=%d", want.BPP, want.TrueColor)
@@ -171,32 +247,85 @@ func serve(c net.Conn, f *fb, serverName string) {
 				}
 			}
 		case msgSetEncodings:
-			readN(c, 1)
-			n := read16(c)
-			readN(c, int(n)*4)
+			_, err := readN(c, 1)
+			if err != nil {
+				return
+			}
+
+			n, err := read16(c)
+			if err != nil {
+				return
+			}
+
+			_, err = readN(c, int(n)*4)
+			if err != nil {
+				return
+			}
 		case msgEnableCU:
-			readN(c, 9)
+			_, err := readN(c, 9)
+			if err != nil {
+				return
+			}
 		case msgFramebufferUpdateReq:
-			readN(c, 9)
-			sendFramebuffer(c, f, pf)
+			_, err := readN(c, 9)
+			if err != nil {
+				return
+			}
+
+			err = sendFramebuffer(c, f, pf)
+			if err != nil {
+				log.Printf("[%s] Failed to send framebuffer: %v", serverName, err)
+				return
+			}
 		default:
-			readN(c, 255)
+			_, err := readN(c, 255)
+			if err != nil {
+				return
+			}
 		}
 	}
 }
 
-func sendServerInit(c net.Conn, w, h int, pf pixelFormat, name string) {
-	write16(c, uint16(w), uint16(h))
-	binary.Write(c, binary.BigEndian, pf)
-	write32(c, uint32(len(name)))
-	write(c, []byte(name))
+func sendServerInit(c net.Conn, w, h int, pf pixelFormat, name string) error {
+	err := write16(c, uint16(w), uint16(h))
+	if err != nil {
+		return err
+	}
+
+	err = binary.Write(c, binary.BigEndian, pf)
+	if err != nil {
+		return err
+	}
+
+	err = write32(c, uint32(len(name)))
+	if err != nil {
+		return err
+	}
+
+	_, err = c.Write([]byte(name))
+	return err
 }
 
-func sendFramebuffer(c net.Conn, f *fb, pf pixelFormat) {
-	write(c, []byte{0, 0})
-	write16(c, 1)
-	write16(c, 0, 0, uint16(f.w), uint16(f.h))
-	write32(c, 0)
+func sendFramebuffer(c net.Conn, f *fb, pf pixelFormat) error {
+	_, err := c.Write([]byte{0, 0})
+	if err != nil {
+		return err
+	}
+
+	err = write16(c, 1)
+	if err != nil {
+		return err
+	}
+
+	err = write16(c, 0, 0, uint16(f.w), uint16(f.h))
+	if err != nil {
+		return err
+	}
+
+	err = write32(c, 0)
+	if err != nil {
+		return err
+	}
 
 	conv := converter(pf)
 	bpp := int(pf.BPP / 8)
@@ -211,8 +340,13 @@ func sendFramebuffer(c net.Conn, f *fb, pf pixelFormat) {
 			copy(line[i:], pix)
 			i += len(pix)
 		}
-		write(c, line[:i])
+		_, err := c.Write(line[:i])
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 func converter(pf pixelFormat) func(r, g, b uint8) []byte {
@@ -278,17 +412,36 @@ func loadPNG(path string) (*fb, error) {
 	return &fb{r.Dx(), r.Dy(), buf}, nil
 }
 
-func write(c net.Conn, b []byte) { _, _ = c.Write(b) }
-func write16(c net.Conn, v ...uint16) {
+func write16(c net.Conn, v ...uint16) error {
 	for _, x := range v {
-		binary.Write(c, binary.BigEndian, x)
+		err := binary.Write(c, binary.BigEndian, x)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
-func write32(c net.Conn, v uint32)   { binary.Write(c, binary.BigEndian, v) }
-func readN(c net.Conn, n int)        { io.CopyN(io.Discard, c, int64(n)) }
-func read1(c net.Conn) byte          { var b [1]byte; io.ReadFull(c, b[:]); return b[0] }
-func read16(c net.Conn) uint16       { var v uint16; binary.Read(c, binary.BigEndian, &v); return v }
-func readFull(r io.Reader, b []byte) { _, _ = io.ReadFull(r, b) }
+
+func write32(c net.Conn, v uint32) error {
+	return binary.Write(c, binary.BigEndian, v)
+}
+
+func readN(c net.Conn, n int) (int64, error) {
+	return io.CopyN(io.Discard, c, int64(n))
+}
+
+func read1(c net.Conn) (byte, error) {
+	var b [1]byte
+	_, err := io.ReadFull(c, b[:])
+	return b[0], err
+}
+
+func read16(c net.Conn) (uint16, error) {
+	var v uint16
+	err := binary.Read(c, binary.BigEndian, &v)
+	return v, err
+}
+
 func check(err error) {
 	if err != nil {
 		log.Fatal(err)

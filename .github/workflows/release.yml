@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Build binaries
+        run: |
+          chmod +x ./build.sh
+          ./build.sh
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/fictusvnc-darwin-amd64
+            build/fictusvnc-darwin-arm64
+            build/fictusvnc-linux-amd64
+            build/fictusvnc-linux-arm64
+            build/fictusvnc-windows-amd64.exe
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
