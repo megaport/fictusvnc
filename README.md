@@ -1,7 +1,6 @@
-# FictusVNC
+# FictusVNC Server
 
-Minimal VNC server that sends a static PNG image to any VNC client.
-Supports 8/24/32 bpp pixel formats — including RealVNC compatibility.
+A minimal VNC server that serves a static image.
 
 ![FictusVNC](banner.png)
 
@@ -14,7 +13,7 @@ Supports 8/24/32 bpp pixel formats — including RealVNC compatibility.
 * 🛠 Configurable via `servers.toml`
 * 📶 Multi-instance support (multiple ports/images)
 * 💾 Cross-platform: Linux, Windows, macOS, ARM64
-* 📉 Lightweight: \~2.8MB binary
+* 📉 Lightweight: ~2.8MB binary
 
 ---
 
@@ -61,3 +60,42 @@ Then run:
 ### 🗂 Preview
 
 ![FictusVNC](vncwindow.png)
+
+---
+
+## Available Flags
+
+| Flag             | Description                                 | Default Value      |
+|------------------|---------------------------------------------|--------------------|
+| `--config`       | Path to TOML configuration file             | `./servers.toml`   |
+| `--name`         | Default server name                         | `FictusVNC`        |
+| `--no-brand`     | Disable "FictusVNC -" prefix in server name | `false`            |
+| `--version`, `-v`| Show version and exit                       | `false`            |
+| `--show-ip`      | Display client IP on the image              | `false`            |
+
+---
+
+## Example Run with Flags
+
+```bash
+go run . --config test.toml --show-ip
+```
+
+---
+
+## Configuration
+
+Example TOML configuration file:
+
+```toml
+[[server]]
+listen = "127.0.0.1:5900"
+server_name = "Test Server"
+image = "test.png"
+```
+
+---
+
+## License
+
+This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
