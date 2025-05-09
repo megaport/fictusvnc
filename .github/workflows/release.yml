@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24'
+          go-version: "1.24"
 
       - name: Build binaries
         run: |
@@ -28,11 +28,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/fictusvnc-darwin-amd64
-            build/fictusvnc-darwin-arm64
             build/fictusvnc-linux-amd64
             build/fictusvnc-linux-arm64
+            build/fictusvnc-linux-386
+
             build/fictusvnc-windows-amd64.exe
+            build/fictusvnc-windows-386.exe
+
+            build/fictusvnc-darwin-amd64
+            build/fictusvnc-darwin-arm64
           name: ${{ github.ref_name }}
           draft: false
           prerelease: false

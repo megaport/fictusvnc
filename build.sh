@@ -11,10 +11,14 @@ PLATFORMS=(
   "linux/amd64"
   "linux/arm64"
   "linux/386"
+
   "windows/amd64"
+  "windows/386"
+
   "darwin/amd64"
   "darwin/arm64"
 )
+
 
 echo "📦 Starting multi-platform build..."
 
