@@ -75,10 +75,20 @@ func main() {
 						addr = fmt.Sprintf("%s:%d", host, port)
 					}
 					serverName := fmt.Sprintf("%s (Port %d)", name, port)
-					go runVNCServer(addr, img, serverName, showIP)
+
+					// Start server in a separate goroutine and handle errors
+					go func(addr, serverName string) {
+						if err := runVNCServer(addr, img, serverName, showIP); err != nil {
+							log.Printf("[WARN] Failed to start server %s on %s: %v", serverName, addr, err)
+						}
+					}(addr, serverName)
 				}
 			} else if s.Listen != "" {
-				go runVNCServer(s.Listen, img, name, showIP)
+				go func() {
+					if err := runVNCServer(s.Listen, img, name, showIP); err != nil {
+						log.Printf("[WARN] Failed to start server %s on %s: %v", name, s.Listen, err)
+					}
+				}()
 			} else {
 				log.Printf("[ERROR] Server %s has no listen address or valid port range", name)
 			}
@@ -95,8 +105,10 @@ func main() {
 		if !noBrand {
 			name = fmt.Sprintf("FictusVNC - %s", name)
 		}
-		runVNCServer(addr, img, name, showIP)
-		select {}
+		if err := runVNCServer(addr, img, name, showIP); err != nil {
+			log.Printf("[ERROR] Failed to start server: %v", err)
+			os.Exit(1)
+		}
 	} else {
 		// fallback default config
 		imagePath := filepath.Join(defaultImageDir, "default.png")
@@ -111,7 +123,12 @@ func main() {
 		}
 		addr := "127.0.0.1:5900"
 		log.Printf("[INFO] No config or args, starting default server at %s", addr)
-		go runVNCServer(addr, img, name, showIP)
+		go func() {
+			if err := runVNCServer(addr, img, name, showIP); err != nil {
+				log.Printf("[ERROR] Failed to start default server: %v", err)
+				os.Exit(1)
+			}
+		}()
 		select {}
 	}
 }

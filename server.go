@@ -11,9 +11,11 @@ import (
 	"time"
 )
 
-func runVNCServer(addr string, f *fb, serverName string, showIP bool) {
+func runVNCServer(addr string, f *fb, serverName string, showIP bool) error {
 	ln, err := net.Listen("tcp", addr)
-	check(err)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", addr, err)
+	}
 	log.Printf("[%s] Serving PNG %dx%d on %s", serverName, f.w, f.h, addr)
 	for {
 		c, err := ln.Accept()
