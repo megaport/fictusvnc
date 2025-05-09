@@ -65,7 +65,23 @@ func main() {
 			if !noBrand {
 				name = fmt.Sprintf("FictusVNC - %s", name)
 			}
-			go runVNCServer(s.Listen, img, name, showIP)
+
+			// Handle port range if specified
+			if s.StartPort > 0 && s.EndPort > 0 && s.EndPort >= s.StartPort {
+				for port := s.StartPort; port <= s.EndPort; port++ {
+					addr := fmt.Sprintf(":%d", port)
+					if s.Listen != "" && !strings.HasPrefix(s.Listen, ":") {
+						host := strings.Split(s.Listen, ":")[0]
+						addr = fmt.Sprintf("%s:%d", host, port)
+					}
+					serverName := fmt.Sprintf("%s (Port %d)", name, port)
+					go runVNCServer(addr, img, serverName, showIP)
+				}
+			} else if s.Listen != "" {
+				go runVNCServer(s.Listen, img, name, showIP)
+			} else {
+				log.Printf("[ERROR] Server %s has no listen address or valid port range", name)
+			}
 		}
 		select {}
 	} else if flag.NArg() == 2 {

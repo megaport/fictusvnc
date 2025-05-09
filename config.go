@@ -1,7 +1,7 @@
 package main
 
 const (
-	appVersion              = "1.0.0"
+	appVersion              = "1.0.1"
 	rfbVersion              = "RFB 003.008\n"
 	msgSetPixelFormat       = 0
 	msgSetEncodings         = 2
@@ -15,7 +15,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen string `toml:"listen"`
-	Image  string `toml:"image"`
-	Name   string `toml:"server_name"`
+	Listen    string `toml:"listen"`
+	Image     string `toml:"image"`
+	Name      string `toml:"server_name"`
+	StartPort int    `toml:"start_port"`
+	EndPort   int    `toml:"end_port"`
 }
