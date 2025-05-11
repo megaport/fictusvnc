@@ -2,6 +2,7 @@ images/*
 !images/default.png 
 
 *.toml
+!servers.toml
 
 build/
 fictusvnc

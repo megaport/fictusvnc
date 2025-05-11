@@ -1,7 +1,7 @@
 package main
 
 const (
-	appVersion              = "1.0.1"
+	appVersion              = "1.0.2"
 	rfbVersion              = "RFB 003.008\n"
 	msgSetPixelFormat       = 0
 	msgSetEncodings         = 2

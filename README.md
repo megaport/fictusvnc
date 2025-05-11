@@ -8,20 +8,20 @@ A minimal VNC server that serves a static image.
 
 ## ⚙️ Features
 
-* 🖼 Serve static PNG as framebuffer
-* 🖥 Supports RealVNC / UltraVNC / TightVNC clients
-* 🛠 Configurable via `servers.toml`
-* 📶 Multi-instance support (multiple ports/images)
-* 💾 Cross-platform: Linux, Windows, macOS, ARM64
-* 📉 Lightweight: ~2.8MB binary
+- 🖼 Serve static PNG as framebuffer
+- 🖥 Supports RealVNC / UltraVNC / TightVNC clients
+- 🛠 Configurable via `servers.toml`
+- 📶 Multi-instance support (multiple ports/images)
+- 💾 Cross-platform: Linux, Windows, macOS, ARM64
+- 📉 Lightweight: ~2.8MB binary
 
 ---
 
 ## 🚀 Quick Start
 
-* [▶️ Run without config](#run-without-config)
-* [⚙️ Run with config (`servers.toml`)](#run-with-config)
-* [🗂 Preview](#preview)
+- [▶️ Run without config](#run-without-config)
+- [⚙️ Run with config (`servers.toml`)](#run-with-config)
+- [🗂 Preview](#preview)
 
 ---
 
@@ -65,20 +65,20 @@ Then run:
 
 ## Available Flags
 
-| Flag             | Description                                 | Default Value      |
-|------------------|---------------------------------------------|--------------------|
-| `--config`       | Path to TOML configuration file             | `./servers.toml`   |
-| `--name`         | Default server name                         | `FictusVNC`        |
-| `--no-brand`     | Disable "FictusVNC -" prefix in server name | `false`            |
-| `--version`, `-v`| Show version and exit                       | `false`            |
-| `--show-ip`      | Display client IP on the image              | `false`            |
+| Flag              | Description                                      | Default Value    |
+| ----------------- | ------------------------------------------------ | ---------------- |
+| `--config`        | Path to TOML configuration file                  | `./servers.toml` |
+| `--name`          | Default server name (if not specified in config) | `FictusVNC`      |
+| `--no-brand`      | Disable "FictusVNC -" prefix in server name      | `false`          |
+| `--version`, `-v` | Show version and exit                            | `false`          |
+| `--show-ip`       | Display client IP on the image                   | `false`          |
 
 ---
 
 ## Example Run with Flags
 
 ```bash
-go run . --config test.toml --show-ip
+go run . --config servers.toml --show-ip
 ```
 
 ---
@@ -89,11 +89,13 @@ Example TOML configuration file:
 
 ```toml
 [[server]]
-listen = "127.0.0.1:5900"
-server_name = "Test Server"
+listen = "127.0.0.1"
+start_port = "5900" # optional
+end_port = "5910" # optional
+server_name = "Test Server" # optional
 image = "test.png"
 ```
-
+Note: You can have multiple [[servers]] sections in one config file.
 ---
 
 ## License

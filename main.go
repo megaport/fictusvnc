@@ -53,7 +53,7 @@ func main() {
 		check(err)
 		for _, s := range cfg.Server {
 			imagePath := filepath.Join(defaultImageDir, s.Image)
-			img, err := loadPNG(imagePath)
+			img, err := loadImage(imagePath)
 			if err != nil {
 				log.Printf("[ERROR] loading %s: %v", imagePath, err)
 				continue
@@ -99,7 +99,7 @@ func main() {
 		if !strings.Contains(addr, ":") {
 			addr = ":" + addr
 		}
-		img, err := loadPNG(path)
+		img, err := loadImage(path)
 		check(err)
 		name := defaultName
 		if !noBrand {
@@ -112,7 +112,7 @@ func main() {
 	} else {
 		// fallback default config
 		imagePath := filepath.Join(defaultImageDir, "default.png")
-		img, err := loadPNG(imagePath)
+		img, err := loadImage(imagePath)
 		if err != nil {
 			log.Fatalf("No config or arguments, and failed to load default image at %s: %v", imagePath, err)
 		}

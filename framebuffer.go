@@ -5,7 +5,8 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"image/png"
+	_ "image/png"
+	_ "image/jpeg"
 	"net"
 	"os"
 
@@ -19,16 +20,18 @@ type fb struct {
 	data []byte
 }
 
-func loadPNG(path string) (*fb, error) {
+func loadImage(path string) (*fb, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	img, err := png.Decode(f)
+
+	img, _, err := image.Decode(f)
 	if err != nil {
 		return nil, err
 	}
+
 	r := img.Bounds()
 	buf := make([]byte, r.Dx()*r.Dy()*4)
 	for y := 0; y < r.Dy(); y++ {

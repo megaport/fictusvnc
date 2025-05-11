@@ -23,20 +23,64 @@ jobs:
           chmod +x ./build.sh
           ./build.sh
 
+      # =========================
+      #  NEW – pack release sets
+      # =========================
+      - name: Package release bundles
+        run: |
+          echo "🔍 CWD before cd: $(pwd)"
+          echo "📂 Listing:"
+          ls -la || true
+
+          cd "${GITHUB_WORKSPACE:-/github/workspace}" || exit 1
+
+          echo "📦 In workspace: $(pwd)"
+          echo "🗃️  Files:"
+          ls -la
+          echo "🖼️  Images:"
+          ls -la images || true
+
+          mkdir -p dist
+
+          # --- *nix тарболы --------------------------
+          for os in linux darwin; do
+            for arch in amd64 arm64 386; do
+              bin_path="build/fictusvnc-${os}-${arch}"
+              [ -f "$bin_path" ] || continue
+
+              workdir="dist/${os}-${arch}"
+              mkdir -p "$workdir/images"
+              cp "$bin_path" "$workdir/fictusvnc"
+              chmod +x "$workdir/fictusvnc"
+              cp servers.toml "$workdir/"
+              cp images/default.png "$workdir/images/"
+
+              tar -C dist -czf build/fictusvnc-${os}-${arch}.tar.gz ${os}-${arch}
+            done
+          done
+
+          # --- Windows ZIP’ы --------------------------
+          for arch in amd64 386; do
+            bin_path="build/fictusvnc-windows-${arch}.exe"
+            [ -f "$bin_path" ] || continue
+
+            workdir="dist/windows-${arch}"
+            mkdir -p "$workdir/images"
+            cp "$bin_path" "$workdir/fictusvnc.exe"
+            cp servers.toml "$workdir/"
+            cp images/default.png "$workdir/images/"
+
+            (cd dist && zip -r ../build/fictusvnc-windows-${arch}.zip windows-${arch})
+          done
       - name: Create Release
         id: create_release
+        if: github.ref_type == 'tag' && github.actor != 'nektos/act'
         uses: softprops/action-gh-release@v2
         with:
+          # хватит одной строки – подхватит все архивы
           files: |
-            build/fictusvnc-linux-amd64
-            build/fictusvnc-linux-arm64
-            build/fictusvnc-linux-386
-
-            build/fictusvnc-windows-amd64.exe
-            build/fictusvnc-windows-386.exe
-
-            build/fictusvnc-darwin-amd64
-            build/fictusvnc-darwin-arm64
+            build/*.tar.gz
+            build/*.zip
           name: ${{ github.ref_name }}
           draft: false
           prerelease: false
