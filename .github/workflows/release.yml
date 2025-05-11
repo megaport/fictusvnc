@@ -42,7 +42,7 @@ jobs:
 
           mkdir -p dist
 
-          # --- *nix тарболы --------------------------
+          # --- *nix tarballs --------------------------
           for os in linux darwin; do
             for arch in amd64 arm64 386; do
               bin_path="build/fictusvnc-${os}-${arch}"
@@ -59,7 +59,7 @@ jobs:
             done
           done
 
-          # --- Windows ZIP’ы --------------------------
+          # --- Windows ZIPs --------------------------
           for arch in amd64 386; do
             bin_path="build/fictusvnc-windows-${arch}.exe"
             [ -f "$bin_path" ] || continue
@@ -77,7 +77,6 @@ jobs:
         if: github.ref_type == 'tag' && github.actor != 'nektos/act'
         uses: softprops/action-gh-release@v2
         with:
-          # хватит одной строки – подхватит все архивы
           files: |
             build/*.tar.gz
             build/*.zip
