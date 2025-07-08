@@ -5,10 +5,15 @@ A minimal VNC server that serves a static image.
 ![FictusVNC](banner.png)
 
 ---
+## July 8, 2025 Update
+Shodan shadowbanned VNC services from their image feed (https://images.shodan.io/) and added official product recognition for FictusVNC: https://www.shodan.io/search?query=product:"FictusVNC"
+
+Note: This affected ALL VNC services, not just FictusVNC.
+Interestingly, it's now being classified as a honeypot - took them long enough to notice.
 
 ## ⚙️ Features
 
-- 🖼 Serve static PNG as framebuffer
+- 🖼 Serve static JPG & PNG as framebuffer
 - 🖥 Supports RealVNC / UltraVNC / TightVNC clients
 - 🛠 Configurable via `servers.toml`
 - 📶 Multi-instance support (multiple ports/images)
@@ -101,3 +106,4 @@ Note: You can have multiple [[servers]] sections in one config file.
 ## License
 
 This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+
