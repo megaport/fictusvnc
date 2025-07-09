@@ -20,12 +20,14 @@ var (
 	noBrand     bool
 	showVersion bool
 	showIP      bool
+	noPort      bool
 )
 
 func main() {
 	configPath := flag.String("config", "", "Path to TOML config file (default: ./servers.toml)")
 	defaultNameFlag := flag.String("name", "FictusVNC", "Default server name")
 	noBrandFlag := flag.Bool("no-brand", false, "Disable 'FictusVNC - ' prefix in server name")
+	noPortFlag := flag.Bool("no-port", false, "Disable port in server name")
 	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
 	flag.BoolVar(&showVersion, "v", false, "Show version and exit (shorthand)")
 	flag.BoolVar(&showIP, "show-ip", false, "Show client IP on image")
@@ -33,6 +35,7 @@ func main() {
 
 	defaultName = *defaultNameFlag
 	noBrand = *noBrandFlag
+	noPort = *noPortFlag
 
 	if showVersion {
 		fmt.Printf("FictusVNC %s\n", appVersion)
@@ -74,7 +77,12 @@ func main() {
 						host := strings.Split(s.Listen, ":")[0]
 						addr = fmt.Sprintf("%s:%d", host, port)
 					}
-					serverName := fmt.Sprintf("%s (Port %d)", name, port)
+					var serverName string
+					if noPort {
+						serverName = name
+					} else {
+						serverName = fmt.Sprintf("%s (Port %d)", name, port)
+					}
 
 					// Start server in a separate goroutine and handle errors
 					go func(addr, serverName string) {

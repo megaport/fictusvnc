@@ -28,6 +28,7 @@ jobs:
       # =========================
       - name: Package release bundles
         run: |
+          set -e
           echo "🔍 CWD before cd: $(pwd)"
           echo "📂 Listing:"
           ls -la || true

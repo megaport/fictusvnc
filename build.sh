@@ -29,7 +29,7 @@ for platform in "${PLATFORMS[@]}"; do
   OUTFILE="${OUTDIR}/${NAME}-${GOOS}-${GOARCH}${EXT}"
 
   echo "🛠️  Building $GOOS/$GOARCH → $OUTFILE"
-  env GOOS=$GOOS GOARCH=$GOARCH go build "${FLAGS[@]}" -o "$OUTFILE" .
+  env CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build "${FLAGS[@]}" -o "$OUTFILE" .
 done
 
 echo "✅ All builds complete. Binaries saved to: $OUTDIR/"
