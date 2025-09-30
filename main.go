@@ -1,6 +1,8 @@
 // main.go
 // Minimal VNC server main entry point and basic utilities.
 
+// Cloned for Megaport.
+
 package main
 
 import (
