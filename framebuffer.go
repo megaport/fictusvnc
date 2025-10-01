@@ -1,18 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"image"
-	"image/color"
-	"image/draw"
-	_ "image/png"
 	_ "image/jpeg"
-	"net"
+	_ "image/png"
 	"os"
-
-	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
-	"golang.org/x/image/math/fixed"
 )
 
 type fb struct {
@@ -45,31 +39,6 @@ func loadImage(path string) (*fb, error) {
 		}
 	}
 	return &fb{r.Dx(), r.Dy(), buf}, nil
-}
-
-func addIPOverlay(src *fb, txt string) *fb {
-	img := image.NewNRGBA(image.Rect(0, 0, src.w, src.h))
-	copy(img.Pix, src.data)
-
-	banner := image.Rect(0, 0, 360, 22)
-	draw.Draw(img, banner, &image.Uniform{color.RGBA{0, 0, 0, 180}}, image.Point{}, draw.Over)
-
-	d := &font.Drawer{
-		Dst:  img,
-		Src:  image.White,
-		Face: basicfont.Face7x13,
-		Dot:  fixed.P(6, 16),
-	}
-	d.DrawString("Your IP: " + txt)
-
-	out := make([]byte, len(img.Pix))
-	for i := 0; i < len(img.Pix); i += 4 {
-		out[i+0] = img.Pix[i+0]
-		out[i+1] = img.Pix[i+1]
-		out[i+2] = img.Pix[i+2]
-		out[i+3] = 0
-	}
-	return &fb{src.w, src.h, out}
 }
 
 func converter(pf pixelFormat) func(r, g, b uint8) []byte {
@@ -110,31 +79,34 @@ func converter(pf pixelFormat) func(r, g, b uint8) []byte {
 	}
 }
 
-func sendFramebuffer(c net.Conn, f *fb, pf pixelFormat) error {
-	_, err := c.Write([]byte{0, 0})
+func constructFramebufferMessage(f *fb, pf pixelFormat) ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	// msg type + padding
+	_, err := buf.Write([]byte{0, 0})
 	if err != nil {
-		return err
+		return nil, err
+	}
+	// number of rectangles
+	err = write16(buf, 1)
+	if err != nil {
+		return nil, err
 	}
 
-	err = write16(c, 1)
+	// xpos, ypos, width, height
+	err = write16(buf, 0, 0, uint16(f.w), uint16(f.h))
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	err = write16(c, 0, 0, uint16(f.w), uint16(f.h))
+	// encoding type
+	err = write32(buf, 0)
 	if err != nil {
-		return err
-	}
-
-	err = write32(c, 0)
-	if err != nil {
-		return err
+		return nil, err
 	}
 
 	conv := converter(pf)
 	bpp := int(pf.BPP / 8)
 	line := make([]byte, f.w*bpp)
-
 	for y := range f.h {
 		i := 0
 		for x := 0; x < f.w; x++ {
@@ -144,11 +116,11 @@ func sendFramebuffer(c net.Conn, f *fb, pf pixelFormat) error {
 			copy(line[i:], pix)
 			i += len(pix)
 		}
-		_, err := c.Write(line[:i])
+		_, err := buf.Write(line[:i])
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return buf.Bytes(), nil
 }

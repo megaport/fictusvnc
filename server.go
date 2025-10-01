@@ -4,87 +4,90 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"log"
-	"net"
-	"strings"
-	"time"
+
+	"github.com/gorilla/websocket"
 )
 
-func runVNCServer(addr string, f *fb, serverName string, showIP bool) error {
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", addr, err)
-	}
-	log.Printf("[%s] Serving PNG %dx%d on %s", serverName, f.w, f.h, addr)
-	for {
-		c, err := ln.Accept()
-		if err != nil {
-			log.Printf("[%s] Accept error: %v", serverName, err)
-			time.Sleep(time.Second)
-			continue
-		}
-		go serve(c, f, serverName, showIP)
-	}
-}
+const (
+	rfbVersion              = "RFB 003.008\n"
+	msgSetPixelFormat       = 0
+	msgFramebufferUpdateReq = 3
+)
 
-func serve(c net.Conn, f *fb, serverName string, showIP bool) {
-	defer func() {
-		c.Close()
-		log.Printf("[%s] Client disconnected", serverName)
-	}()
-	var clientFB *fb
-	if showIP {
-		clientIP := strings.Split(c.RemoteAddr().String(), ":")[0]
-		clientFB = addIPOverlay(f, clientIP)
-	} else {
-		clientFB = f
-	}
+func serveWebsocket(c *websocket.Conn, f *fb, serverName string) {
+	defer c.Close()
+
+	clientFB := f
 	log.Printf("[%s] Client connected from %s", serverName, c.RemoteAddr())
 
-	c.SetReadDeadline(time.Now().Add(30 * time.Second))
-
-	_, err := c.Write([]byte(rfbVersion))
+	// send server protocol version
+	err := c.WriteMessage(websocket.BinaryMessage, []byte(rfbVersion))
 	if err != nil {
 		log.Printf("[%s] Failed to send version: %v", serverName, err)
 		return
 	}
 
-	buf := make([]byte, 12)
-	_, err = io.ReadFull(c, buf)
+	// read client protocol version
+	_, messageBody, err := c.ReadMessage()
 	if err != nil {
 		log.Printf("[%s] Failed to read client version: %v", serverName, err)
 		return
 	}
+	if len(messageBody) != 12 {
+		log.Printf("[%s] Failed to read client version", serverName)
+		return
+	}
 
-	_, err = c.Write([]byte{1, 1})
+	// send auth type
+	err = c.WriteMessage(websocket.BinaryMessage, []byte{1, 1})
 	if err != nil {
 		log.Printf("[%s] Failed to send auth: %v", serverName, err)
 		return
 	}
 
-	buf = make([]byte, 1)
-	_, err = io.ReadFull(c, buf)
+	// read client auth selection
+	_, messageBody, err = c.ReadMessage()
 	if err != nil {
 		log.Printf("[%s] Failed to read auth selection: %v", serverName, err)
 		return
 	}
+	if len(messageBody) != 1 {
+		log.Printf("[%s] Failed to read auth selection", serverName)
+		return
+	}
 
-	_, err = c.Write(make([]byte, 4))
+	// send auth result
+	err = c.WriteMessage(websocket.BinaryMessage, make([]byte, 4))
 	if err != nil {
 		log.Printf("[%s] Failed to send auth result: %v", serverName, err)
 		return
 	}
 
-	buf = make([]byte, 1)
-	_, err = io.ReadFull(c, buf)
+	// read client init
+	_, messageBody, err = c.ReadMessage()
 	if err != nil {
 		log.Printf("[%s] Failed to read client init: %v", serverName, err)
 		return
 	}
+	if len(messageBody) != 1 {
+		log.Printf("[%s] Failed to read client init", serverName)
+		return
+	}
 
+	// send server init
 	pf := pixelFormat{32, 24, 0, 1, 255, 255, 255, 16, 8, 0, [3]byte{}}
-	err = sendServerInit(c, clientFB.w, clientFB.h, pf, serverName)
+	serverInitMessage, err := constructServerInit(
+		clientFB.w,
+		clientFB.h,
+		pf,
+		serverName,
+	)
+	if err != nil {
+		log.Printf("[%s] Failed to construct server init: %v", serverName, err)
+		return
+	}
+	err = c.WriteMessage(websocket.BinaryMessage, serverInitMessage)
 	if err != nil {
 		log.Printf("[%s] Failed to send server init: %v", serverName, err)
 		return
@@ -92,87 +95,71 @@ func serve(c net.Conn, f *fb, serverName string, showIP bool) {
 
 	var lastRejectedFormat string
 
+	// mainloop: track encoding format and send framebuffer updates
 	for {
-		err := c.SetReadDeadline(time.Now().Add(30 * time.Second))
+		_, messageBody, err = c.ReadMessage()
 		if err != nil {
-			log.Printf("[%s] Failed to set read deadline: %v", serverName, err)
+			log.Printf("[%s] Failed to read client message: %v", serverName, err)
+			return
+		}
+		if len(messageBody) == 0 {
+			log.Printf("[%s] Failed to read client message", serverName)
 			return
 		}
 
-		msgType, err := read1(c)
-		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				log.Printf("[%s] Read timeout, closing connection", serverName)
-			} else if err != io.EOF {
-				log.Printf("[%s] Read error: %v", serverName, err)
-			}
-			return
-		}
-
+		msgType := messageBody[0]
 		switch msgType {
 		case msgSetPixelFormat:
-			_, err := readN(c, 3)
-			if err != nil {
-				log.Printf("[%s] Failed to read padding: %v", serverName, err)
-				return
-			}
-
-			var buf [16]byte
-			_, err = io.ReadFull(c, buf[:])
-			if err != nil {
-				log.Printf("[%s] Failed to read pixel format: %v", serverName, err)
-				return
-			}
-
-			var want pixelFormat
-			binary.Read(bytes.NewReader(buf[:]), binary.BigEndian, &want)
-			formatID := fmt.Sprintf("%dbpp trueColor=%d", want.BPP, want.TrueColor)
-			if want.TrueColor == 1 && (want.BPP == 32 || want.BPP == 24 || want.BPP == 8) {
-				pf = want
-				log.Printf("[%s] Client pixel format: %s", serverName, formatID)
-				lastRejectedFormat = ""
-			} else {
-				if formatID != lastRejectedFormat {
-					log.Printf("[%s] Unsupported format: %s — ignoring", serverName, formatID)
-					lastRejectedFormat = formatID
+			if len(messageBody) == 20 {
+				var want pixelFormat
+				binary.Read(bytes.NewReader(messageBody[4:]), binary.BigEndian, &want)
+				formatID := fmt.Sprintf("%dbpp trueColor=%d", want.BPP, want.TrueColor)
+				if want.TrueColor == 1 && (want.BPP == 32 || want.BPP == 24 || want.BPP == 8) {
+					pf = want
+					log.Printf("[%s] Client pixel format: %s", serverName, formatID)
+					lastRejectedFormat = ""
+				} else {
+					if formatID != lastRejectedFormat {
+						log.Printf("[%s] Unsupported format: %s — ignoring", serverName, formatID)
+						lastRejectedFormat = formatID
+					}
 				}
-			}
-		case msgSetEncodings:
-			_, err := readN(c, 1)
-			if err != nil {
-				return
-			}
 
-			n, err := read16(c)
-			if err != nil {
-				return
-			}
-
-			_, err = readN(c, int(n)*4)
-			if err != nil {
-				return
-			}
-		case msgEnableCU:
-			_, err := readN(c, 9)
-			if err != nil {
-				return
 			}
 		case msgFramebufferUpdateReq:
-			_, err := readN(c, 9)
+			framebufferMessage, err := constructFramebufferMessage(clientFB, pf)
 			if err != nil {
+				log.Printf("[%s] Failed to construct framebuffer message: %v", serverName, err)
 				return
 			}
-
-			err = sendFramebuffer(c, clientFB, pf)
+			err = c.WriteMessage(websocket.BinaryMessage, framebufferMessage)
 			if err != nil {
 				log.Printf("[%s] Failed to send framebuffer: %v", serverName, err)
 				return
 			}
-		default:
-			_, err := readN(c, 255)
-			if err != nil {
-				return
-			}
 		}
 	}
+}
+
+func constructServerInit(width, height int, pf pixelFormat, name string) ([]byte, error) {
+	b := new(bytes.Buffer)
+
+	err := write16(b, uint16(width), uint16(height))
+	if err != nil {
+		return nil, err
+	}
+	err = binary.Write(b, binary.BigEndian, pf)
+	if err != nil {
+		return nil, err
+	}
+	err = write32(b, uint32(len(name)))
+	if err != nil {
+		return nil, err
+	}
+	_, err = b.Write([]byte(name))
+	if err != nil {
+		return nil, err
+	}
+
+	return b.Bytes(), nil
 }

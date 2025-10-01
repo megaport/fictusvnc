@@ -1,7 +1,8 @@
 module fictusvnc
 
-go 1.24.2
+go 1.24
 
-require github.com/BurntSushi/toml v1.5.0
-
-require golang.org/x/image v0.27.0
+require (
+	github.com/go-chi/chi/v5 v5.2.3
+	github.com/gorilla/websocket v1.5.3
+)

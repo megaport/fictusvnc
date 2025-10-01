@@ -1,150 +1,93 @@
 // main.go
 // Minimal VNC server main entry point and basic utilities.
 
-// Cloned for Megaport.
-
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
+	"os/signal"
+	"syscall"
 
-	"github.com/BurntSushi/toml"
+	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
 )
 
-// Importing global variables from config.go
 var (
-	defaultName string
-	noBrand     bool
-	showVersion bool
-	showIP      bool
-	noPort      bool
+	serverImage *fb
+	serverName  string
+
+	upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
 )
 
 func main() {
-	configPath := flag.String("config", "", "Path to TOML config file (default: ./servers.toml)")
-	defaultNameFlag := flag.String("name", "FictusVNC", "Default server name")
-	noBrandFlag := flag.Bool("no-brand", false, "Disable 'FictusVNC - ' prefix in server name")
-	noPortFlag := flag.Bool("no-port", false, "Disable port in server name")
-	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
-	flag.BoolVar(&showVersion, "v", false, "Show version and exit (shorthand)")
-	flag.BoolVar(&showIP, "show-ip", false, "Show client IP on image")
+	serverNameFlag := flag.String("servername", "Mock VNC server", "Server name")
+	portNumberFlag := flag.Int("port", 5900, "VNC port")
+	imageNameFlag := flag.String("image", "./images/default.png", "Image to display")
+	certFilenameFlag := flag.String("certfile", "./cert.pem", "Certificate file")
+	keyFilenameFlag := flag.String("keyfile", "./key.pem", "Key file")
 	flag.Parse()
 
-	defaultName = *defaultNameFlag
-	noBrand = *noBrandFlag
-	noPort = *noPortFlag
+	serverName = *serverNameFlag
 
-	if showVersion {
-		fmt.Printf("FictusVNC %s\n", appVersion)
+	img, err := loadImage(*imageNameFlag)
+	if err != nil {
+		log.Fatalf("failed to load the image: %s\n", err)
+	}
+	serverImage = img
+
+	r := chi.NewRouter()
+	r.Route("/vnc", func(sub chi.Router) {
+		sub.Get("/", serverFunc)
+	})
+	listenAddress := fmt.Sprintf(":%d", *portNumberFlag)
+	server := &http.Server{
+		Addr:    listenAddress,
+		Handler: r,
+	}
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(
+		signalChan,
+		syscall.SIGINT,  // ctrl^C
+		syscall.SIGTERM, // docker shutdown
+	)
+
+	go func(ch chan os.Signal) {
+		<-ch
+		err := server.Shutdown(context.Background())
+		if err != nil {
+			log.Printf("proxy shutdown error: %s\n", err)
+		}
+	}(signalChan)
+
+	if err := server.ListenAndServeTLS(*certFilenameFlag, *keyFilenameFlag); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		panic(err)
+	}
+
+	log.Printf("done\n")
+}
+
+func serverFunc(w http.ResponseWriter, r *http.Request) {
+	log.Printf("incoming connection\n")
+
+	wsConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("failed to upgrade incoming request to websocket: %s\n", err)
+		http.Error(w, "failed to upgrade incoming connection", http.StatusBadGateway)
 		return
 	}
 
-	log.Printf("[INFO] FictusVNC %s starting…", appVersion)
-
-	if *configPath == "" {
-		exe, _ := os.Executable()
-		dir := filepath.Dir(exe)
-		*configPath = filepath.Join(dir, "servers.toml")
-	}
-
-	var cfg Config
-	if _, err := os.Stat(*configPath); err == nil {
-		_, err := toml.DecodeFile(*configPath, &cfg)
-		check(err)
-		for _, s := range cfg.Server {
-			imagePath := filepath.Join(defaultImageDir, s.Image)
-			img, err := loadImage(imagePath)
-			if err != nil {
-				log.Printf("[ERROR] loading %s: %v", imagePath, err)
-				continue
-			}
-			name := s.Name
-			if name == "" {
-				name = defaultName
-			}
-			if !noBrand {
-				name = fmt.Sprintf("FictusVNC - %s", name)
-			}
-
-			// Handle port range if specified
-			if s.StartPort > 0 && s.EndPort > 0 && s.EndPort >= s.StartPort {
-				for port := s.StartPort; port <= s.EndPort; port++ {
-					addr := fmt.Sprintf(":%d", port)
-					if s.Listen != "" && !strings.HasPrefix(s.Listen, ":") {
-						host := strings.Split(s.Listen, ":")[0]
-						addr = fmt.Sprintf("%s:%d", host, port)
-					}
-					var serverName string
-					if noPort {
-						serverName = name
-					} else {
-						serverName = fmt.Sprintf("%s (Port %d)", name, port)
-					}
-
-					// Start server in a separate goroutine and handle errors
-					go func(addr, serverName string) {
-						if err := runVNCServer(addr, img, serverName, showIP); err != nil {
-							log.Printf("[WARN] Failed to start server %s on %s: %v", serverName, addr, err)
-						}
-					}(addr, serverName)
-				}
-			} else if s.Listen != "" {
-				go func() {
-					if err := runVNCServer(s.Listen, img, name, showIP); err != nil {
-						log.Printf("[WARN] Failed to start server %s on %s: %v", name, s.Listen, err)
-					}
-				}()
-			} else {
-				log.Printf("[ERROR] Server %s has no listen address or valid port range", name)
-			}
-		}
-		select {}
-	} else if flag.NArg() == 2 {
-		addr, path := flag.Arg(0), flag.Arg(1)
-		if !strings.Contains(addr, ":") {
-			addr = ":" + addr
-		}
-		img, err := loadImage(path)
-		check(err)
-		name := defaultName
-		if !noBrand {
-			name = fmt.Sprintf("FictusVNC - %s", name)
-		}
-		if err := runVNCServer(addr, img, name, showIP); err != nil {
-			log.Printf("[ERROR] Failed to start server: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		// fallback default config
-		imagePath := filepath.Join(defaultImageDir, "default.png")
-		img, err := loadImage(imagePath)
-		if err != nil {
-			log.Fatalf("No config or arguments, and failed to load default image at %s: %v", imagePath, err)
-		}
-		name := defaultName
-
-		if !noBrand {
-			name = fmt.Sprintf("FictusVNC - %s", name)
-		}
-		addr := "127.0.0.1:5900"
-		log.Printf("[INFO] No config or args, starting default server at %s", addr)
-		go func() {
-			if err := runVNCServer(addr, img, name, showIP); err != nil {
-				log.Printf("[ERROR] Failed to start default server: %v", err)
-				os.Exit(1)
-			}
-		}()
-		select {}
-	}
-}
-
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+	go serveWebsocket(wsConn, serverImage, serverName)
 }
