@@ -1,0 +1,15 @@
+---
+
+services:
+  fictusvnc_websocket:
+    image: "fictusvnc_websocket:latest"
+    environment:
+      - FICTUSVNC_SERVER_NAME=${FICTUSVNC_SERVER_NAME:-Mock VNC server}
+      - FILE_PATH=/host
+      - FICTUSVNC_IMAGE=${FICTUSVNC_IMAGE:-}
+      - FICTUSVNC_CERTFILE=${FICTUSVNC_CERTFILE:-}
+      - FICTUSVNC_KEYFILE=${FICTUSVNC_KEYFILE:-}
+    volumes:
+      - $PWD:/host
+    ports:
+      - "${FICTUSVNC_PORT:-5900}:5900"

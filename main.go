@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
@@ -34,14 +35,33 @@ var (
 func main() {
 	serverNameFlag := flag.String("servername", "Mock VNC server", "Server name")
 	portNumberFlag := flag.Int("port", 5900, "VNC port")
-	imageNameFlag := flag.String("image", "./images/default.png", "Image to display")
-	certFilenameFlag := flag.String("certfile", "./cert.pem", "Certificate file")
-	keyFilenameFlag := flag.String("keyfile", "./key.pem", "Key file")
+	imageNameFlag := flag.String("image", "default.png", "Image to display")
+	certNameFlag := flag.String("certfile", "", "Certificate file")
+	keyNameFlag := flag.String("keyfile", "", "Key file")
 	flag.Parse()
 
-	serverName = *serverNameFlag
+	serverName = getValue(*serverNameFlag, "FICTUSVNC_SERVER_NAME")
+	log.Printf("server name: %s\n", serverName)
 
-	img, err := loadImage(*imageNameFlag)
+	filePath := getValue("", "FILE_PATH")
+	log.Printf("file path: %s\n", filePath)
+
+	imageName := getValue(*imageNameFlag, "FICTUSVNC_IMAGE")
+	log.Printf("image name: %s\n", imageName)
+	imageFileName := path.Join(filePath, imageName)
+	log.Printf("full image file name: %s\n", imageFileName)
+
+	certName := getValue(*certNameFlag, "FICTUSVNC_CERTFILE")
+	log.Printf("cert name: %s\n", certName)
+	certFileName := path.Join(filePath, certName)
+	log.Printf("full cert file name: %s\n", certFileName)
+
+	keyName := getValue(*keyNameFlag, "FICTUSVNC_KEYFILE")
+	log.Printf("key name: %s\n", keyName)
+	keyFileName := path.Join(filePath, keyName)
+	log.Printf("full key file name: %s\n", keyFileName)
+
+	img, err := loadImage(imageFileName)
 	if err != nil {
 		log.Fatalf("failed to load the image: %s\n", err)
 	}
@@ -72,11 +92,27 @@ func main() {
 		}
 	}(signalChan)
 
-	if err := server.ListenAndServeTLS(*certFilenameFlag, *keyFilenameFlag); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		panic(err)
+	if len(certFileName) > 0 && len(keyFileName) > 0 {
+		log.Printf("using TLS\n")
+		if err := server.ListenAndServeTLS(certFileName, keyFileName); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
+	} else {
+		log.Printf("using http\n")
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
 	}
 
 	log.Printf("done\n")
+}
+
+func getValue(value, envVarName string) string {
+	envValue := os.Getenv(envVarName)
+	if len(envValue) > 0 {
+		return envValue
+	}
+	return value
 }
 
 func serverFunc(w http.ResponseWriter, r *http.Request) {
