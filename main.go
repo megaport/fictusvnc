@@ -41,25 +41,31 @@ func main() {
 	flag.Parse()
 
 	serverName = getValue(*serverNameFlag, "FICTUSVNC_SERVER_NAME")
-	log.Printf("server name: %s\n", serverName)
+	log.Printf("server name: '%s'\n", serverName)
 
 	filePath := getValue("", "FILE_PATH")
-	log.Printf("file path: %s\n", filePath)
+	log.Printf("file path: '%s'\n", filePath)
 
 	imageName := getValue(*imageNameFlag, "FICTUSVNC_IMAGE")
-	log.Printf("image name: %s\n", imageName)
+	log.Printf("image name: '%s'\n", imageName)
 	imageFileName := path.Join(filePath, imageName)
-	log.Printf("full image file name: %s\n", imageFileName)
+	log.Printf("full image file name: '%s'\n", imageFileName)
 
 	certName := getValue(*certNameFlag, "FICTUSVNC_CERTFILE")
-	log.Printf("cert name: %s\n", certName)
-	certFileName := path.Join(filePath, certName)
-	log.Printf("full cert file name: %s\n", certFileName)
+	log.Printf("cert name: '%s'\n", certName)
+	certFileName := certName
+	if len(certName) > 0 {
+		certFileName = path.Join(filePath, certName)
+		log.Printf("full cert file name: '%s'\n", certFileName)
+	}
 
 	keyName := getValue(*keyNameFlag, "FICTUSVNC_KEYFILE")
-	log.Printf("key name: %s\n", keyName)
-	keyFileName := path.Join(filePath, keyName)
-	log.Printf("full key file name: %s\n", keyFileName)
+	log.Printf("key name: '%s'\n", keyName)
+	keyFileName := keyName
+	if len(keyName) > 0 {
+		keyFileName = path.Join(filePath, keyName)
+		log.Printf("full key file name: '%s'\n", keyFileName)
+	}
 
 	img, err := loadImage(imageFileName)
 	if err != nil {
